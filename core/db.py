@@ -1,7 +1,22 @@
-from typing import Dict
+from typing import Dict, Union
 
 from leveldb import LevelDB, LevelDBError, WriteBatch
 from pathlib import Path
+
+
+STB = Union[str, bytes]
+
+
+def b(s: STB, enc: str = 'ascii') -> bytes:
+    """
+    converts likely str obj to bytes (ascii encoding by default)
+    :param s: string to convert (may also be bytes-like already)
+    :param enc: default ascii, str encoding
+    :return: string converted to bytes or just bytes if it already was such.
+    """
+    if type(s) == bytes:
+        return s
+    return bytes(s, encoding=enc)
 
 
 def _get_db() -> LevelDB:
@@ -9,28 +24,32 @@ def _get_db() -> LevelDB:
     Gets DB instance, not to be used outside, thus private
     :return: LevelDB instance
     """
-    return LevelDB(Path.home() / 'minitripdb')
+    return LevelDB((Path.home() / 'minitripdb').as_posix(), create_if_missing=True, paranoid_checks=True)
 
 
-def batch_write(kv: Dict[str, str]):
+def batch_write(kv: Dict[STB, STB]):
     """
     Writes a Dictionary of Keys and Values via a WriteBatch into the DB.
     :param kv: dict of keys & values
     """
     batch = WriteBatch()
-    for k, v in kv:
-        batch.Put(k, v)
+    for k, v in kv.items():
+        batch.Put(b(k), b(v))
     _get_db().Write(batch, sync=True)
 
 
-def write(key: str, value: str):
+def put(key: STB, value: STB):
     """
     Write single key value pair into db
     :param key: key to write
     :param value: value to write
     """
-    _get_db().Write(key, value)
+    _get_db().Put(b(key), b(value))
 
 
-def get(key: str) -> str:
-    return _get_db().Get(key)
+def get(key: STB) -> str:
+    return _get_db().Get(b(key)).decode('ascii')
+
+
+def delete(key: STB):
+    return _get_db().Delete(b(key), sync=True)
