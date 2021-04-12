@@ -1,4 +1,4 @@
-from typing import Dict, Union
+from typing import Dict, Union, Optional
 
 from leveldb import LevelDB, LevelDBError, WriteBatch
 from pathlib import Path
@@ -47,9 +47,15 @@ def put(key: STB, value: STB):
     _get_db().Put(b(key), b(value))
 
 
-def get(key: STB) -> str:
-    return _get_db().Get(b(key)).decode('ascii')
+def get(key: STB) -> Optional[str]:
+    try:
+        return _get_db().Get(b(key)).decode('ascii')
+    except KeyError:
+        return None
 
 
 def delete(key: STB):
-    return _get_db().Delete(b(key), sync=True)
+    try:
+        return _get_db().Delete(b(key), sync=True)
+    except KeyError:
+        return None

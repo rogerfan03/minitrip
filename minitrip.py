@@ -1,9 +1,8 @@
 """ Minitrip, a filesystem integrity check tool """
 import argparse
-import os
 
 from pathlib import Path
-from typing import List, Optional, Set, Dict
+from typing import List, Optional, Dict
 from hashlib import sha256
 
 from core.db import batch_write, get, put, delete
@@ -30,22 +29,35 @@ def main():
     hashes = generate_hashes(files)
     present = {}
     debug('files', files)
-    debug('hashes', hashes)
+    debug('hashes #', len(hashes))
     for h in hashes.values():
         present[h] = get(h)
     if options['add'] and options['force']:
         to_import = {}
-        for h in hashes.values():
-            to_import[h] = '0'
+        for f, h in hashes.items():
+            to_import[h] = str(f.stat().st_ctime)
         batch_write(to_import)
     elif options['add']:
-        for h in hashes.values():
-            if not int(present.get(h, default=False)):
-                put(h, '0')
+        for f, h in hashes.items():
+            if not int(present.get(h, False)):
+                put(h, str(f.stat().st_ctime))
+    elif options['badware']:
+        for f, h in hashes.items():
+            debug(f'Badware: Adding {f.as_posix()} with hash {h.hex()} and stem {f.stem}')
+            put(h, f.stem)
     elif options['check']:
         for f, h in hashes.items():
-            if int(present.get(h, default=False)):
-                print(f'Found a match! \nFile: {f.absolute()} \nHash:{h.hex()}')
+            t = None
+            try:
+                t = present.get(h, None)
+                debug(f'DB-Result from file {f.as_posix()} with hash {h.hex()} is {t}')
+                if t is None:
+                    continue
+                float(t)
+            except ValueError:
+                print(f'Found a badware! \nFile: {f.absolute()} \nHash:{h.hex()} \nStem: {t}'
+                      f'\nTimestamp ctime: {f.stat().st_ctime}')
+                pass
 
     print('Done')
 
@@ -60,15 +72,18 @@ def generate_hashes(files: List[Path]) -> Dict[Path, bytes]:
 
 
 def parser():
-    parse = argparse.ArgumentParser(description='Tool to check files via hashes, compare then, and so on.')
+    parse = argparse.ArgumentParser(description='Tool to check files via hashes, compare them, and so on.')
     parse.add_argument('--path', type=str, help='path to traverse, defaults to CWD', default=Path.cwd().as_posix())
     parse.add_argument('--verbose', const=True, action='store_const',
                        help='print out additional info while running')
-    parse.add_argument('--add', const=True, action='store_const', help='add hashes to DB if not already present')
-    parse.add_argument('--check', const=True, action='store_const',
+    parse.add_argument('--add', const=True, action='store_const',
+                       help='add hashes to DB if not already present')
+    parse.add_argument('--check', const=True, action='store_const', default=True,
                        help='check all hashes with db present ones for marked ones')
     parse.add_argument('--force', const=True, action='store_const',
                        help='forcefully overwrite DB hashes (used with --add)')
+    parse.add_argument('--badware', const=True, action='store_const',
+                       help='add --path (to file!) as a badware in DB')
     return parse
 
 
